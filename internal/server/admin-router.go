@@ -6,28 +6,24 @@ import (
 	"go-chi-sqlite-jwt-starter/internal/utils"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/gin-gonic/gin"
 )
 
-func adminRouter() http.Handler {
-	r := chi.NewRouter()
+func adminRouter(r *gin.RouterGroup) {
 	auth.UseAuthMiddleware(r)
 	r.Use(adminOnly)
 
-	r.Get("/test-token", func(w http.ResponseWriter, r *http.Request) {
+	r.GET("/test-token", gin.WrapF(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("You are successfully authenticated as an admin!"))
-	})
-
-	return r
+	}))
 }
 
-func adminOnly(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		user := utils.GetUserFromContext(w, r.Context())
-		if user.Role != models.Admin {
-			http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
+func adminOnly(c *gin.Context) {
+	user := utils.GetUserFromContext(c.Writer, c.Request.Context())
+	if user.Role != models.Admin {
+		http.Error(c.Writer, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		c.Abort()
+		return
+	}
+	c.Next()
 }

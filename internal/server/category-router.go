@@ -11,49 +11,48 @@ import (
 	"go-chi-sqlite-jwt-starter/internal/utils"
 	"go-chi-sqlite-jwt-starter/internal/validation"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/gin-gonic/gin"
 )
 
-func categoryRouter() http.Handler {
-	r := chi.NewRouter()
+func categoryRouter(r *gin.RouterGroup) {
 	auth.UseAuthMiddleware(r)
 
-	r.Get("/list", category_handlers.ListCategories)
-	r.Post("/create", category_handlers.CreateCategory)
+	r.GET("/list", gin.WrapF(category_handlers.ListCategories))
+	r.POST("/create", gin.WrapF(category_handlers.CreateCategory))
 
-	r.Route("/{categoryID}", func(r chi.Router) {
-		r.Use(CategoryCtx)
-		r.Get("/", category_handlers.GetCategory)
-		r.Put("/", category_handlers.UpdateCategory)
-		r.Delete("/", category_handlers.DeleteCategory)
-	})
-
-	return r
+	sub := r.Group("/:categoryID")
+	sub.Use(CategoryCtx)
+	sub.GET("", gin.WrapF(category_handlers.GetCategory))
+	sub.PUT("", gin.WrapF(category_handlers.UpdateCategory))
+	sub.DELETE("", gin.WrapF(category_handlers.DeleteCategory))
 }
 
-func CategoryCtx(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		categoryID := chi.URLParam(r, "categoryID")
-		id, err := utils.StringToInt64(categoryID)
-		if err != nil {
-			http.Error(w, "Invalid category ID", http.StatusBadRequest)
-			return
-		}
+func CategoryCtx(c *gin.Context) {
+	w := c.Writer
+	categoryID := c.Param("categoryID")
+	id, err := utils.StringToInt64(categoryID)
+	if err != nil {
+		http.Error(w, "Invalid category ID", http.StatusBadRequest)
+		c.Abort()
+		return
+	}
 
-		catgory, err := provider.Provider.CategoryService.GetCategory(id)
-		if err != nil {
-			http.Error(w, http.StatusText(404), http.StatusNotFound)
-			return
-		}
+	catgory, err := provider.Provider.CategoryService.GetCategory(id)
+	if err != nil {
+		http.Error(w, http.StatusText(404), http.StatusNotFound)
+		c.Abort()
+		return
+	}
 
-		user := utils.GetUserFromContext(w, r.Context())
-		err = validation.HasAccessToCategoryGroup(w, catgory.CategoryGroupID, user.ID)
-		if err != nil {
-			return
-		}
+	user := utils.GetUserFromContext(w, c.Request.Context())
+	err = validation.HasAccessToCategoryGroup(w, catgory.CategoryGroupID, user.ID)
+	if err != nil {
+		c.Abort()
+		return
+	}
 
-		ctx := context.WithValue(r.Context(), models.ContextKeys.Category, catgory)
-		ctx = context.WithValue(ctx, models.ContextKeys.CategoryID, categoryID)
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
+	ctx := context.WithValue(c.Request.Context(), models.ContextKeys.Category, catgory)
+	ctx = context.WithValue(ctx, models.ContextKeys.CategoryID, categoryID)
+	c.Request = c.Request.WithContext(ctx)
+	c.Next()
 }

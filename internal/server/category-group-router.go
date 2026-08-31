@@ -10,44 +10,42 @@ import (
 	provider "go-chi-sqlite-jwt-starter/internal/provider"
 	"go-chi-sqlite-jwt-starter/internal/utils"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/gin-gonic/gin"
 )
 
-func categoryGroupRouter() http.Handler {
-	r := chi.NewRouter()
+func categoryGroupRouter(r *gin.RouterGroup) {
 	auth.UseAuthMiddleware(r)
 
-	r.Get("/list", category_group_handlers.ListCategoryGroups)
-	r.Post("/create", category_group_handlers.CreateCategoryGroup)
+	r.GET("/list", gin.WrapF(category_group_handlers.ListCategoryGroups))
+	r.POST("/create", gin.WrapF(category_group_handlers.CreateCategoryGroup))
 
-	r.Route("/{categoryGroupID}", func(r chi.Router) {
-		r.Use(CategoryGroupCtx)
-		r.Get("/", category_group_handlers.GetCategoryGroup)
-		r.Post("/rename", category_group_handlers.RenameCategoryGroup)
-		r.Delete("/", category_group_handlers.DeleteCategoryGroup)
-	})
-
-	return r
+	sub := r.Group("/:categoryGroupID")
+	sub.Use(CategoryGroupCtx)
+	sub.GET("", gin.WrapF(category_group_handlers.GetCategoryGroup))
+	sub.POST("/rename", gin.WrapF(category_group_handlers.RenameCategoryGroup))
+	sub.DELETE("", gin.WrapF(category_group_handlers.DeleteCategoryGroup))
 }
 
-func CategoryGroupCtx(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		categoryGroupID := chi.URLParam(r, "categoryGroupID")
-		id, err := utils.StringToInt64(categoryGroupID)
-		if err != nil {
-			http.Error(w, "Invalid category group ID", http.StatusBadRequest)
-			return
-		}
+func CategoryGroupCtx(c *gin.Context) {
+	w := c.Writer
+	categoryGroupID := c.Param("categoryGroupID")
+	id, err := utils.StringToInt64(categoryGroupID)
+	if err != nil {
+		http.Error(w, "Invalid category group ID", http.StatusBadRequest)
+		c.Abort()
+		return
+	}
 
-		user := utils.GetUserFromContext(w, r.Context())
-		catgoryGroup, err := provider.Provider.CategoryGroupService.GetCategoryGroupForUser(id, user.ID)
-		if err != nil {
-			http.Error(w, http.StatusText(404), http.StatusNotFound)
-			return
-		}
+	user := utils.GetUserFromContext(w, c.Request.Context())
+	catgoryGroup, err := provider.Provider.CategoryGroupService.GetCategoryGroupForUser(id, user.ID)
+	if err != nil {
+		http.Error(w, http.StatusText(404), http.StatusNotFound)
+		c.Abort()
+		return
+	}
 
-		ctx := context.WithValue(r.Context(), models.ContextKeys.CategoryGroup, catgoryGroup)
-		ctx = context.WithValue(ctx, models.ContextKeys.CategoryGroupID, categoryGroupID)
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
+	ctx := context.WithValue(c.Request.Context(), models.ContextKeys.CategoryGroup, catgoryGroup)
+	ctx = context.WithValue(ctx, models.ContextKeys.CategoryGroupID, categoryGroupID)
+	c.Request = c.Request.WithContext(ctx)
+	c.Next()
 }

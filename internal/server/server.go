@@ -3,31 +3,36 @@ package server
 import (
 	"go-chi-sqlite-jwt-starter/internal/auth"
 	"log"
+	"net/http"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
+	"github.com/gin-gonic/gin"
 )
 
-func Initialize() *chi.Mux {
+func Initialize() *gin.Engine {
 	log.Println("Initializing server...")
 	defer log.Println("Server initialized")
 
-	r := chi.NewRouter()
+	r := gin.New()
 	useGlobalMiddleware(r)
 	auth.InitializeTokenVerifier()
 
-	r.Mount("/category", categoryRouter())
-	r.Mount("/category-group", categoryGroupRouter())
-	r.Mount("/admin", adminRouter())
-	r.Mount("/auth", authRouter())
+	categoryRouter(r.Group("/category"))
+	categoryGroupRouter(r.Group("/category-group"))
+	adminRouter(r.Group("/admin"))
+	authRouter(r.Group("/auth"))
 
 	return r
 }
 
-func useGlobalMiddleware(r *chi.Mux) {
-	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
-	r.Use(middleware.Logger)
-	r.Use(middleware.Recoverer)
-	r.Use(middleware.Heartbeat("/health"))
+func useGlobalMiddleware(r *gin.Engine) {
+	r.Use(requestID)
+	r.Use(realIP)
+	r.Use(gin.Logger())
+	r.Use(gin.Recovery())
+	r.GET("/health", func(c *gin.Context) {
+		c.String(http.StatusOK, ".")
+	})
+	r.HEAD("/health", func(c *gin.Context) {
+		c.String(http.StatusOK, ".")
+	})
 }
